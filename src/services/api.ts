@@ -37,9 +37,19 @@ export class ApiError extends Error {
 }
 
 async function parseJsonOrThrow(response: Response): Promise<any> {
-  const data = await response.json().catch(() => ({}));
+  let data: any = {};
+  let text = '';
+  try {
+    text = await response.clone().text();
+    data = JSON.parse(text);
+  } catch (e) {
+    // Not a JSON response
+  }
   if (!response.ok) {
-    throw new ApiError(data.error || 'حدث خطأ غير متوقع أثناء الاتصال بالخادم.', data.needsConfig === true);
+    const fallbackMsg = text && !text.startsWith('<!doctype') && !text.startsWith('<html')
+      ? `خطأ من الخادم (رمز ${response.status}): ${text.slice(0, 150)}`
+      : `حدث خطأ غير متوقع أثناء الاتصال بالخادم (رمز الحالة ${response.status}).`;
+    throw new ApiError(data.error || fallbackMsg, data.needsConfig === true);
   }
   return data;
 }
