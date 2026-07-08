@@ -1,0 +1,6 @@
+{
+  "name": "إدارة مدرسة النجاح",
+  "description": "نظام شامل لتنظيم وإدارة الطلاب، والأساتذة، وكشوف المستحقات والرواتب والتقارير المالية المتكاملة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

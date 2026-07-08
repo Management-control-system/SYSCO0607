@@ -1,0 +1,79 @@
+rules_version = '2';
+
+// SECURITY MODEL
+// --------------
+// The old rules were `allow read, write: if true;` — completely open, so
+// any visitor could read or edit every school's data. This is fixed by:
+//
+//   1. Requiring Firebase Authentication for every request. The client only
+//      ever signs in via a custom token minted by our backend AFTER it
+//      verifies the person's PIN server-side (see server/authRoutes.ts).
+//      That custom token carries `schoolId`, `role` and `pinId` as custom
+//      claims, available here as request.auth.token.*.
+//
+//   2. Every school's data lives under /schools/{schoolId}/... and every
+//      rule below checks that request.auth.token.schoolId matches the
+//      schoolId in the path, so one school's staff can never see or touch
+//      another school's students, teachers, settings, or payments.
+//
+//   3. The `pins` subcollection (PIN hashes) is never readable or writable
+//      directly by clients at all — that data only ever flows through our
+//      backend endpoints (/api/auth/*), which use the Admin SDK and never
+//      expose raw PIN values to the browser.
+//
+//   4. `pendingPayments` / `pendingSubscriptions` are only ever written by
+//      the backend (Admin SDK, which bypasses these rules) — clients are
+//      explicitly denied read/write so a forged document can't be planted
+//      to fool the app.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function belongsToSchool(schoolId) {
+      return isSignedIn() && request.auth.token.schoolId == schoolId;
+    }
+
+    function isSchoolAdmin(schoolId) {
+      return belongsToSchool(schoolId) && request.auth.token.role == 'admin';
+    }
+
+    match /schools/{schoolId} {
+
+      // Students: any authenticated staff member of this school can manage.
+      match /students/{studentId} {
+        allow read, write: if belongsToSchool(schoolId);
+      }
+
+      // Teachers: any authenticated staff member of this school can manage.
+      match /teachers/{teacherId} {
+        allow read, write: if belongsToSchool(schoolId);
+      }
+
+      // School settings / subscription: everyone in the school can read,
+      // but only an admin can change them (billing, branding, etc).
+      match /settings/{settingId} {
+        allow read: if belongsToSchool(schoolId);
+        allow write: if isSchoolAdmin(schoolId);
+      }
+
+      // PIN codes: never exposed to the client, in any direction.
+      // Managed exclusively via the backend's Admin SDK.
+      match /pins/{pinId} {
+        allow read, write: if false;
+      }
+
+      // Payment/subscription bookkeeping written only by the backend
+      // (Admin SDK bypasses rules); explicitly deny the client here.
+      match /pendingPayments/{paymentId} {
+        allow read, write: if false;
+      }
+      match /pendingSubscriptions/{subId} {
+        allow read, write: if false;
+      }
+    }
+  }
+}
